@@ -2,262 +2,313 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>NEON HAND FIELD</title>
   <style>
-    html,body{margin:0;height:100%;background:#05060a;color:#cfe8ff;font-family:system-ui,-apple-system,Segoe UI,Roboto;}
-    #c{position:fixed;inset:0;width:100%;height:100%;display:block}
-    #hud{position:fixed;left:12px;top:10px;right:12px;display:flex;gap:10px;align-items:center;z-index:9}
-    #title{font-weight:700;letter-spacing:.08em;opacity:.9}
-    #tip{margin-left:auto;opacity:.85;font-size:12px}
-    #log{position:fixed;left:12px;bottom:12px;right:12px;z-index:9;
-      background:rgba(0,0,0,.45);border:1px solid rgba(120,200,255,.18);
-      border-radius:14px;padding:10px 12px;font-size:12px;line-height:1.35;
-      backdrop-filter: blur(10px);
-      white-space:pre-wrap;
-    }
-    #btn{
-      position:fixed;left:12px;bottom:84px;z-index:10;
-      padding:12px 14px;border-radius:18px;border:1px solid rgba(120,200,255,.25);
-      background:rgba(0,0,0,.35);color:#d9f2ff;font-weight:700;
-    }
-    #btn:active{transform:scale(.98)}
-    #v{position:fixed;right:10px;bottom:10px;width:140px;aspect-ratio:3/4;
-      border-radius:14px;overflow:hidden;opacity:.15;border:1px solid rgba(120,200,255,.2);
-      z-index:8;display:none;
-    }
+    html,body{margin:0;height:100%;overflow:hidden;background:#03050c;font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Noto Sans CJK SC",Arial}
+    #wrap{position:fixed;inset:0}
+    canvas{position:absolute;inset:0;width:100%;height:100%}
+    video{position:absolute;right:10px;bottom:10px;width:140px;aspect-ratio:3/4;border-radius:14px;overflow:hidden;opacity:.12;border:1px solid rgba(120,200,255,.2);z-index:8;display:none}
+    .fx::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(to bottom,rgba(255,255,255,.035)0,rgba(255,255,255,.035)1px,rgba(0,0,0,0)3px,rgba(0,0,0,0)6px);mix-blend-mode:overlay;pointer-events:none;opacity:.35}
+    .fx::after{content:"";position:absolute;inset:-20%;background:radial-gradient(ellipse at center,rgba(0,0,0,0)0%,rgba(0,0,0,.5)55%,rgba(0,0,0,.92)100%);pointer-events:none;opacity:.95}
+    #hud{position:absolute;left:12px;top:12px;right:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:10;pointer-events:none}
+    #badge{display:flex;gap:10px;align-items:center;color:rgba(180,230,255,.92);text-shadow:0 0 12px rgba(80,180,255,.65);letter-spacing:.08em;font-weight:800;font-size:12px}
+    #dot{width:8px;height:8px;border-radius:50%;background:#00e5ff;box-shadow:0 0 14px rgba(0,229,255,.9)}
+    #tip{color:rgba(200,240,255,.88);text-shadow:0 0 12px rgba(80,180,255,.45);font-size:12px;opacity:.92}
+    #panel{position:absolute;left:12px;bottom:12px;right:12px;display:flex;gap:10px;align-items:flex-end;justify-content:space-between;z-index:10}
+    #btn{appearance:none;border:1px solid rgba(120,200,255,.25);background:rgba(0,0,0,.35);color:#d9f2ff;font-weight:800;padding:12px 14px;border-radius:16px;font-size:14px;backdrop-filter:blur(10px);box-shadow:0 0 18px rgba(0,229,255,.18)}
+    #btn:active{transform:translateY(1px)}
+    #log{max-width:68%;color:rgba(200,240,255,.90);font-size:12px;line-height:1.35;white-space:pre-wrap;text-shadow:0 0 12px rgba(80,180,255,.45);
+      background:rgba(0,0,0,.38);border:1px solid rgba(120,200,255,.18);border-radius:14px;padding:10px 12px;backdrop-filter:blur(10px)}
   </style>
 </head>
 <body>
+<div id="wrap" class="fx">
   <canvas id="c"></canvas>
-
-  <div id="hud">
-    <div id="title">NEON HAND FIELD</div>
-    <div id="tip">拇指+食指捏合=聚拢｜张开=扩散（需要摄像头权限）</div>
-  </div>
-
-  <button id="btn">启动摄像头 + 手势</button>
-  <div id="log">准备中…</div>
   <video id="v" playsinline autoplay muted></video>
 
-  <script type="module">
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d', { alpha: true });
-    const btn = document.getElementById('btn');
-    const logBox = document.getElementById('log');
-    const video = document.getElementById('v');
+  <div id="hud">
+    <div id="badge"><span id="dot"></span><span>NEON HAND FIELD</span></div>
+    <div id="tip">捏合(拇指+食指)=聚拢｜张开=扩散｜中心会跟着手移动</div>
+  </div>
 
-    function log(s){ logBox.textContent = s; }
+  <div id="panel">
+    <button id="btn">启动摄像头 + 手势</button>
+    <div id="log">未启动</div>
+  </div>
+</div>
 
-    // 适配屏幕
-    function resize(){
-      const dpr = Math.max(1, Math.min(2.5, devicePixelRatio || 1));
-      canvas.width = Math.floor(innerWidth * dpr);
-      canvas.height = Math.floor(innerHeight * dpr);
-      canvas.style.width = innerWidth + "px";
-      canvas.style.height = innerHeight + "px";
-      ctx.setTransform(dpr,0,0,dpr,0,0);
-    }
-    addEventListener('resize', resize, {passive:true});
-    resize();
+<script type="module">
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const btn = document.getElementById("btn");
+  const logBox = document.getElementById("log");
+  const video = document.getElementById("v");
 
-    // ------- 粒子系统（酷炫/未来感：霓虹拖尾 + 扰动 + 吸引/排斥场） -------
-    const N = 5200;
-    const P = new Array(N).fill(0).map(()=>({
-      x: Math.random()*innerWidth,
-      y: Math.random()*innerHeight,
-      vx: 0, vy: 0,
-      hue: 180 + Math.random()*120,
-      a: 0.6 + Math.random()*0.4
-    }));
+  function log(s){ logBox.textContent = s; }
+  function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
-    let targetX = innerWidth*0.5, targetY = innerHeight*0.55;
-    let field = 0.35;      // 0=强聚拢  1=强扩散
-    let energy = 0.8;      // “未来感”动能
-    let lastT = performance.now();
+  // ===== 画布尺寸 =====
+  function resize(){
+    const dpr = Math.max(1, Math.min(2.3, devicePixelRatio || 1));
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  addEventListener("resize", resize, {passive:true});
+  resize();
 
-    function step(t){
-      const dt = Math.min(0.033, (t-lastT)/1000); lastT=t;
+  // ===== 粒子：未来霓虹场（Canvas）=====
+  const LOW = (navigator.hardwareConcurrency || 4) <= 4;
+  const N = LOW ? 9000 : 16000;
 
-      // 背景拖尾（更赛博）
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = `rgba(2,3,8,${0.20})`;
-      ctx.fillRect(0,0,innerWidth,innerHeight);
+  const px = new Float32Array(N);
+  const py = new Float32Array(N);
+  const vx = new Float32Array(N);
+  const vy = new Float32Array(N);
+  const hue = new Float32Array(N);
 
-      ctx.globalCompositeOperation = 'lighter';
+  for(let i=0;i<N;i++){
+    px[i] = Math.random() * innerWidth;
+    py[i] = Math.random() * innerHeight;
+    vx[i] = (Math.random()*2-1) * 0.9;
+    vy[i] = (Math.random()*2-1) * 0.9;
+    hue[i] = 170 + Math.random()*140;
+  }
 
-      const fx = (x,y)=> {
-        const dx = targetX - x, dy = targetY - y;
-        const r2 = dx*dx + dy*dy + 80;
-        const inv = 1/Math.sqrt(r2);
+  let targetX = innerWidth * 0.5;
+  let targetY = innerHeight * 0.55;
 
-        // field：捏合->吸引更强；张开->排斥更强
-        const attract = (1-field)* 1600;
-        const repel   = field * 900;
+  // field：0=强吸（聚拢） 1=强排（扩散）
+  let field = 0.35;
+  let strength = 0.2;
 
-        // 吸引/排斥混合 + 环形扭曲
-        const ax = dx*inv*attract - dx*inv*repel;
-        const ay = dy*inv*attract - dy*inv*repel;
+  let lastT = performance.now();
 
-        // 旋涡（更未来感）
-        const swirl = (0.45 + energy*0.9) * 520;
-        const sx = -dy*inv*swirl;
-        const sy =  dx*inv*swirl;
+  function draw(t){
+    const dt = Math.min(0.033, (t-lastT)/1000); lastT=t;
 
-        return [ax+sx, ay+sy];
-      };
+    // 背景拖尾（赛博残影）
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(1,2,8,0.18)";
+    ctx.fillRect(0,0,innerWidth,innerHeight);
 
-      for (let i=0;i<N;i++){
-        const p=P[i];
-        const [ax,ay]=fx(p.x,p.y);
+    ctx.globalCompositeOperation = "lighter";
 
-        // 阻尼 + 随机微扰
-        p.vx = p.vx*0.90 + ax*dt*0.0012 + (Math.random()-0.5)*energy*0.12;
-        p.vy = p.vy*0.90 + ay*dt*0.0012 + (Math.random()-0.5)*energy*0.12;
+    // 平滑强度
+    strength += ((0.65 + (1-field)*0.85) - strength) * 0.03;
 
-        p.x += p.vx;
-        p.y += p.vy;
+    const radius = (90 + strength*190);
+    const r2 = radius*radius;
 
-        // 边界回弹
-        if(p.x<0||p.x>innerWidth){p.vx*=-0.8; p.x=Math.max(0,Math.min(innerWidth,p.x));}
-        if(p.y<0||p.y>innerHeight){p.vy*=-0.8; p.y=Math.max(0,Math.min(innerHeight,p.y));}
+    for(let i=0;i<N;i++){
+      const x = px[i], y = py[i];
+      const dx = targetX - x, dy = targetY - y;
+      const d2 = dx*dx + dy*dy + 1e-3;
 
-        // 画点（霓虹）
-        const alpha = p.a * (0.55 + energy*0.45);
-        ctx.fillStyle = `hsla(${p.hue},100%,65%,${alpha})`;
-        ctx.fillRect(p.x, p.y, 1.2, 1.2);
+      // 基础阻尼
+      vx[i] *= (0.965 - strength*0.01);
+      vy[i] *= (0.965 - strength*0.01);
+
+      if(d2 < r2){
+        const d = Math.sqrt(d2);
+        const inv = 1 - d / radius;
+
+        // 吸/排：捏合=>吸；张开=>排
+        const attract = (1-field) * (38 + strength*55);
+        const repel   = field * (20 + strength*40);
+        const f = (attract - repel) * inv / (d + 25);
+
+        vx[i] += dx * f;
+        vy[i] += dy * f;
+
+        // 旋涡：更未来感
+        const swirl = (0.20 + strength*0.35) * (field > 0.6 ? -1 : 1);
+        vx[i] += (-dy) * swirl * inv / (d + 80);
+        vy[i] += ( dx) * swirl * inv / (d + 80);
       }
 
-      requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
+      // 微噪声
+      vx[i] += (Math.random()-0.5) * 0.25 * strength;
+      vy[i] += (Math.random()-0.5) * 0.25 * strength;
 
-    // ------- 关键：多源加载 MediaPipe（解决 unpkg 失败） -------
-    async function tryImport(url){
+      px[i] = x + vx[i] * dt * 60;
+      py[i] = y + vy[i] * dt * 60;
+
+      if(px[i] < 0) px[i] = innerWidth;
+      if(px[i] > innerWidth) px[i] = 0;
+      if(py[i] < 0) py[i] = innerHeight;
+      if(py[i] > innerHeight) py[i] = 0;
+
+      const rr = 1.1 + strength*1.9;
+      ctx.fillStyle = `hsla(${hue[i]}, 100%, 65%, ${0.20 + strength*0.25})`;
+      ctx.fillRect(px[i], py[i], rr, rr);
+    }
+
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  // ===== 工具：尝试 fetch（避免“无限加载”）=====
+  async function tryFetchOk(url, ms=6000){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), ms);
+    try{
+      const r = await fetch(url, { method:"GET", signal: controller.signal, cache:"no-store" });
+      clearTimeout(timer);
+      return r.ok;
+    }catch(e){
+      clearTimeout(timer);
+      return false;
+    }
+  }
+
+  // ===== 多源加载 tasks-vision（不用 script 标签，直接 import mjs）=====
+  async function tryImport(url){
+    try{
+      return await import(url);
+    }catch(e){
+      return null;
+    }
+  }
+
+  async function loadTasksVision(){
+    const candidates = [
+      // jsDelivr 多节点
+      "https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs",
+      "https://gcore.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs",
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs",
+      // unpkg 的 mjs（不是 vision_bundle.js）
+      "https://unpkg.com/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs",
+      // 兜底：GitHub raw（如果 CDN 被挡）
+      "https://raw.githubusercontent.com/whatisor/mediapipe-tasks-vision/master/vision_bundle.mjs"
+    ];
+
+    let last = null;
+    for(const u of candidates){
+      log("加载手势引擎模块…\n" + u);
+      const m = await tryImport(u);
+      if(m) return m;
+      last = u;
+      await sleep(150);
+    }
+    throw new Error("MediaPipe 模块加载失败（所有源都失败）\n最后尝试: " + last);
+  }
+
+  async function pickWasmBase(FilesetResolver){
+    const bases = [
+      "https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm",
+      "https://gcore.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm",
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm",
+      "https://unpkg.com/@mediapipe/tasks-vision@0.10.15/wasm",
+      "https://raw.githubusercontent.com/whatisor/mediapipe-tasks-vision/master/wasm"
+    ];
+
+    for(const b of bases){
+      log("加载 WASM Fileset…\n" + b);
       try{
-        const m = await import(url);
-        return m;
-      }catch(e){
-        return null;
-      }
+        const vision = await FilesetResolver.forVisionTasks(b);
+        return vision;
+      }catch(e){}
     }
+    throw new Error("WASM 文件加载失败（所有源都失败）");
+  }
 
-    async function loadVisionModule(){
-      const candidates = [
-        // 1) jsDelivr（通常比 unpkg 更稳）
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/vision_bundle.mjs",
-        // 2) esm.sh 备用
-        "https://esm.sh/@mediapipe/tasks-vision@0.10.15?bundle",
-        // 3) GitHub Raw 镜像（当 CDN 全挂/被墙时）
-        "https://raw.githubusercontent.com/whatisor/mediapipe-tasks-vision/master/vision_bundle.mjs"
+  // ===== 手势：GestureRecognizer（拇指+食指捏合控制聚拢/扩散）=====
+  function smooth(a,b,k){ return a + (b-a)*k; }
+
+  let running = false;
+
+  async function start(){
+    if(running) return;
+    running = true;
+    btn.disabled = true;
+
+    try{
+      log("已点击 ✅\n请求摄像头权限中…");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width:{ideal:1280}, height:{ideal:720} },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+
+      // 如果你想看右下角小窗口，把 display 改成 block
+      // video.style.display = "block";
+
+      const mp = await loadTasksVision();
+      const { GestureRecognizer, FilesetResolver } = mp;
+
+      const vision = await pickWasmBase(FilesetResolver);
+
+      // 模型多地址候选（先测可达，避免“无限加载”）
+      const modelCandidates = [
+        // 镜像优先：fastly/gcore 的 GitHub 文件
+        "https://fastly.jsdelivr.net/gh/OriErez3/Gesture-Recognizer@main/gesture_recognizer.task",
+        "https://gcore.jsdelivr.net/gh/OriErez3/Gesture-Recognizer@main/gesture_recognizer.task",
+        // GitHub raw 兜底
+        "https://raw.githubusercontent.com/OriErez3/Gesture-Recognizer/main/gesture_recognizer.task",
+        // 最后才试 Google（你这里经常卡）
+        "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
       ];
 
-      for (const url of candidates){
-        log("正在加载 MediaPipe 模块：\n" + url);
-        const m = await tryImport(url);
-        if(m){
-          log("✅ MediaPipe 模块加载成功：\n" + url);
-          return m;
-        }
+      let modelUrl = null;
+      for(const u of modelCandidates){
+        log("测试模型可达…\n" + u);
+        const ok = await tryFetchOk(u, 6000);
+        if(ok){ modelUrl = u; break; }
       }
-      throw new Error("MediaPipe 脚本加载失败（所有源都失败）");
-    }
+      if(!modelUrl) throw new Error("手势模型下载失败：所有地址都无法访问（换网络/WiFi 试试）");
 
-    async function pickWasmBase(FilesetResolver){
-      const bases = [
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.15/wasm",
-        "https://raw.githubusercontent.com/whatisor/mediapipe-tasks-vision/master/wasm"
-      ];
-      for (const base of bases){
-        try{
-          log("正在加载 WASM Fileset：\n" + base);
-          const vision = await FilesetResolver.forVisionTasks(base);
-          log("✅ WASM Fileset 成功：\n" + base);
-          return vision;
-        }catch(e){}
-      }
-      throw new Error("WASM 文件加载失败（所有源都失败）");
-    }
+      log("加载手势模型…\n" + modelUrl);
+      const recognizer = await GestureRecognizer.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: modelUrl },
+        runningMode: "VIDEO",
+        numHands: 1
+      });
 
-    // ------- 摄像头 + 手势（捏合控制聚拢/扩散） -------
-    let running = false;
+      log("✅ 就绪！\n把手放进镜头：捏合=聚拢，张开=扩散");
 
-    async function start(){
-      if(running) return;
-      running = true;
+      let lastVideoTime = -1;
+      let pinchSmoothed = 0.35;
 
-      try{
-        // 1) 摄像头
-        log("请求摄像头权限中…（弹窗请选择允许）");
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-          audio: false
-        });
-        video.srcObject = stream;
-        await video.play();
+      function loop(){
+        if(video.readyState >= 2 && video.currentTime !== lastVideoTime){
+          lastVideoTime = video.currentTime;
+          const res = recognizer.recognizeForVideo(video, performance.now());
 
-        // 2) 载入 MediaPipe
-        const mp = await loadVisionModule();
-        const { GestureRecognizer, FilesetResolver } = mp;
+          const lm = res?.landmarks?.[0];
+          if(lm){
+            // 手场中心跟随 wrist(0)
+            const wrist = lm[0];
+            targetX = smooth(targetX, (1-wrist.x) * innerWidth, 0.18); // 镜像修正
+            targetY = smooth(targetY, wrist.y * innerHeight, 0.18);
 
-        // 3) 选择 WASM 源
-        const vision = await pickWasmBase(FilesetResolver);
+            // 捏合程度：thumb tip(4) <-> index tip(8)
+            const dx = (lm[4].x - lm[8].x);
+            const dy = (lm[4].y - lm[8].y);
+            const pinch = Math.min(1, Math.max(0, Math.sqrt(dx*dx + dy*dy) / 0.35)); // 0捏合 1张开
+            pinchSmoothed = smooth(pinchSmoothed, pinch, 0.15);
 
-        // 4) 创建识别器（模型从 Google 存储拉取；如果你网络挡住它，我再教你“把模型放进仓库”）
-        const modelUrl =
-          "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task";
-
-        log("正在加载手势模型…\n" + modelUrl);
-        const recognizer = await GestureRecognizer.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: modelUrl },
-          runningMode: "VIDEO",
-          numHands: 1
-        });
-        log("✅ 手势识别器已就绪！把手放到镜头里，拇指+食指捏合试试。");
-
-        // 5) 实时识别循环
-        let lastVideoTime = -1;
-        const smooth = (a,b,k)=>a+(b-a)*k;
-        let pinchSmoothed = 0.35;
-
-        function loop(){
-          if(video.readyState >= 2){
-            if(video.currentTime !== lastVideoTime){
-              lastVideoTime = video.currentTime;
-              const res = recognizer.recognizeForVideo(video, performance.now());
-
-              // res.landmarks: 手部 21 点（如果识别到手）
-              const lm = res?.landmarks?.[0];
-              if(lm){
-                // 4=拇指尖, 8=食指尖
-                const dx = (lm[4].x - lm[8].x);
-                const dy = (lm[4].y - lm[8].y);
-                const pinch = Math.min(1, Math.max(0, Math.sqrt(dx*dx+dy*dy) / 0.35)); // 0=捏合 1=张开
-                pinchSmoothed = smooth(pinchSmoothed, pinch, 0.15);
-
-                field = pinchSmoothed;               // 捏合=>0 聚拢；张开=>1 扩散
-                energy = 0.6 + (1-pinchSmoothed)*0.7; // 捏合时更“能量爆棚”
-
-                // 让场中心跟随手掌中心（更像“隔空控场”）
-                const palm = lm[0]; // wrist
-                targetX = smooth(targetX, palm.x * innerWidth, 0.22);
-                targetY = smooth(targetY, palm.y * innerHeight, 0.22);
-              }
-            }
+            field = pinchSmoothed; // 0聚拢，1扩散
           }
-          requestAnimationFrame(loop);
         }
-        loop();
-
-      }catch(err){
-        running = false;
-        console.error(err);
-        log("启动失败 ❌\n" + (err?.message || err));
-        alert("启动失败：\n" + (err?.message || err));
+        requestAnimationFrame(loop);
       }
-    }
+      loop();
 
-    btn.addEventListener('click', start);
-  </script>
+    }catch(err){
+      console.error(err);
+      running = false;
+      btn.disabled = false;
+      log("启动失败 ❌\n" + (err?.message || err));
+      alert("启动失败：\n" + (err?.message || err));
+    }
+  }
+
+  btn.addEventListener("click", start);
+</script>
 </body>
 </html>

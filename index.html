@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>Neon Hand Field (Stable)</title>
+  <title>Neon Hand Field (Fix)</title>
   <style>
     html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Noto Sans CJK SC",Arial}
     #wrap{position:fixed;inset:0}
@@ -42,7 +42,6 @@
   const ctx = c.getContext("2d");
   const btn = document.getElementById("btn");
   const statusEl = document.getElementById("status");
-
   function setStatus(t){ statusEl.textContent = t; }
 
   function resize(){
@@ -52,229 +51,196 @@
   addEventListener("resize", resize);
   resize();
 
-  // ===== 粒子（纯 Canvas：更稳、更省依赖）=====
+  // ===== 粒子（纯 Canvas，先保证能跑）=====
   const LOW = (navigator.hardwareConcurrency || 4) <= 4;
   const N = LOW ? 9000 : 16000;
-
-  const px = new Float32Array(N);
-  const py = new Float32Array(N);
-  const vx = new Float32Array(N);
-  const vy = new Float32Array(N);
+  const px = new Float32Array(N), py = new Float32Array(N);
+  const vx = new Float32Array(N), vy = new Float32Array(N);
   const sd = new Float32Array(N);
-
   for(let i=0;i<N;i++){
-    px[i] = Math.random();
-    py[i] = Math.random();
-    vx[i] = (Math.random()*2-1)*0.0015;
-    vy[i] = (Math.random()*2-1)*0.0015;
-    sd[i] = Math.random()*Math.PI*2;
+    px[i]=Math.random(); py[i]=Math.random();
+    vx[i]=(Math.random()*2-1)*0.0015;
+    vy[i]=(Math.random()*2-1)*0.0015;
+    sd[i]=Math.random()*Math.PI*2;
   }
 
-  // 手势控制量
-  let handX = 0.5, handY = 0.5;
-  let targetStrength = 0;
-  let targetMode = 0; // +1吸引 -1排斥 0轻微
-  let strength = 0;
+  let handX=0.5, handY=0.5;
+  let targetStrength=0, targetMode=0;
+  let strength=0;
 
   function step(t){
-    const w = c.width, h = c.height;
-
-    // 背景残影（未来感）
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(0,0,0,0.10)";
+    const w=c.width,h=c.height;
+    ctx.globalCompositeOperation="source-over";
+    ctx.fillStyle="rgba(0,0,0,0.10)";
     ctx.fillRect(0,0,w,h);
 
-    // 粒子
-    ctx.globalCompositeOperation = "lighter";
+    ctx.globalCompositeOperation="lighter";
+    const mx=handX*w,my=handY*h;
 
-    const mx = handX * w, my = handY * h;
-    strength += (targetStrength - strength) * 0.10;
-
-    const radius = (0.10 + strength*0.20) * Math.min(w,h);
-    const r2 = radius*radius;
+    strength += (targetStrength-strength)*0.10;
+    const radius=(0.10+strength*0.20)*Math.min(w,h);
+    const r2=radius*radius;
 
     for(let i=0;i<N;i++){
-      const x = px[i]*w;
-      const y = py[i]*h;
+      const x=px[i]*w,y=py[i]*h;
+      const dx=mx-x,dy=my-y;
+      const d2=dx*dx+dy*dy;
 
-      const dx = mx - x;
-      const dy = my - y;
-      const d2 = dx*dx + dy*dy;
+      if(d2<r2){
+        const d=Math.sqrt(d2)+1e-6;
+        const inv=1-d/radius;
 
-      if(d2 < r2){
-        const d = Math.sqrt(d2) + 1e-6;
-        const inv = 1 - d / radius;
+        const pull=(targetMode===0?0.002:(targetMode*(0.008+strength*0.03)));
+        vx[i]+= (dx/d)*pull*inv;
+        vy[i]+= (dy/d)*pull*inv;
 
-        // 吸/推
-        const pull = (targetMode===0?0.002: (targetMode*(0.008 + strength*0.03)));
-        vx[i] += (dx/d) * pull * inv;
-        vy[i] += (dy/d) * pull * inv;
-
-        // 旋涡
-        const swirl = (0.004 + strength*0.02) * (targetMode===-1?-1:1);
-        vx[i] += (-dy/d) * swirl * inv;
-        vy[i] += ( dx/d) * swirl * inv;
+        const swirl=(0.004+strength*0.02)*(targetMode===-1?-1:1);
+        vx[i]+= (-dy/d)*swirl*inv;
+        vy[i]+= ( dx/d)*swirl*inv;
       }
 
-      // 微噪声漂移
-      vx[i] += Math.sin(t*0.001 + sd[i]) * 0.00006;
-      vy[i] += Math.cos(t*0.0013 + sd[i]*1.2) * 0.00006;
+      vx[i]+=Math.sin(t*0.001+sd[i])*0.00006;
+      vy[i]+=Math.cos(t*0.0013+sd[i]*1.2)*0.00006;
 
-      // 阻尼
-      vx[i] *= (0.985 - strength*0.01);
-      vy[i] *= (0.985 - strength*0.01);
+      vx[i]*=(0.985-strength*0.01);
+      vy[i]*=(0.985-strength*0.01);
 
-      // 更新位置（归一化0..1）
-      px[i] += vx[i];
-      py[i] += vy[i];
+      px[i]+=vx[i]; py[i]+=vy[i];
+      if(px[i]<0)px[i]=1; if(px[i]>1)px[i]=0;
+      if(py[i]<0)py[i]=1; if(py[i]>1)py[i]=0;
 
-      if(px[i]<0) px[i]=1;
-      if(px[i]>1) px[i]=0;
-      if(py[i]<0) py[i]=1;
-      if(py[i]>1) py[i]=0;
-
-      // 画点（霓虹）
-      const rr = 1.2 + strength*2.2;
-      const hue = (t*0.02 + sd[i]*80) % 360;
-      ctx.fillStyle = `hsla(${hue}, 95%, 65%, 0.55)`;
+      const rr=1.2+strength*2.2;
+      const hue=(t*0.02+sd[i]*80)%360;
+      ctx.fillStyle=`hsla(${hue},95%,65%,0.55)`;
       ctx.beginPath();
-      ctx.arc(px[i]*w, py[i]*h, rr, 0, Math.PI*2);
+      ctx.arc(px[i]*w,py[i]*h,rr,0,Math.PI*2);
       ctx.fill();
     }
-
     requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
 
-  // ===== 载入 MediaPipe（多 CDN 轮询）=====
+  // ===== MediaPipe：脚本多源加载（修正 unpkg 文件名：vision_bundle.cjs）=====
   function loadScript(url){
-    return new Promise((resolve, reject)=>{
-      const s = document.createElement("script");
-      s.src = url;
-      s.crossOrigin = "anonymous";
-      s.onload = resolve;
-      s.onerror = () => reject(new Error("脚本加载失败: " + url));
+    return new Promise((resolve,reject)=>{
+      const s=document.createElement("script");
+      s.src=url; s.crossOrigin="anonymous";
+      s.onload=resolve;
+      s.onerror=()=>reject(new Error("脚本加载失败: "+url));
       document.head.appendChild(s);
     });
   }
 
   async function ensureMediaPipe(){
-    // vision_bundle.js 候选
     const visionCandidates = [
+      // 先用 jsDelivr（一般更好）
       "https://gcore.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js",
       "https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js",
-      "https://unpkg.com/@mediapipe/tasks-vision/vision_bundle.js",
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js",
+      // unpkg 上常见是 cjs 文件名（你之前失败就是因为 .js 不存在）
+      "https://unpkg.com/@mediapipe/tasks-vision@0.10.15/vision_bundle.cjs",
     ];
 
-    let lastErr = null;
+    let last=null;
     for(const u of visionCandidates){
       try{
-        setStatus("正在加载手势引擎脚本…\n" + u);
+        setStatus("正在加载手势引擎脚本…\n"+u);
         await loadScript(u);
-        if (window.FilesetResolver && window.HandLandmarker) return;
-      }catch(e){ lastErr = e; }
+        if(window.FilesetResolver && window.HandLandmarker) return;
+      }catch(e){ last=e; }
     }
-    throw lastErr || new Error("MediaPipe 脚本加载失败");
+    throw last || new Error("MediaPipe 脚本加载失败（所有源都失败）");
   }
 
   async function createHandLandmarker(){
-    // wasm 目录候选（有人会用 unpkg 来绕开 404/被拦） 2
     const wasmCandidates = [
       "https://gcore.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm",
       "https://fastly.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm",
       "https://unpkg.com/@mediapipe/tasks-vision/wasm",
     ];
 
-    // 模型候选（Google 有时会被拦，所以我们先准备多个） 3
     const modelCandidates = [
       "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
       "https://fastly.jsdelivr.net/gh/heyfoz/nodejs-mediapipe@main/models/hand_landmarker.task",
       "https://gcore.jsdelivr.net/gh/heyfoz/nodejs-mediapipe@main/models/hand_landmarker.task",
     ];
 
-    let lastErr = null;
-
+    let last=null;
     for(const wasmRoot of wasmCandidates){
       try{
-        setStatus("正在加载 WASM…\n" + wasmRoot);
+        setStatus("正在加载 WASM…\n"+wasmRoot);
         const vision = await window.FilesetResolver.forVisionTasks(wasmRoot);
 
         for(const modelUrl of modelCandidates){
           try{
-            setStatus("正在加载模型…\n" + modelUrl);
-            const lm = await window.HandLandmarker.createFromOptions(vision, {
-              baseOptions: { modelAssetPath: modelUrl },
-              numHands: 1
+            setStatus("正在加载模型…\n"+modelUrl);
+            const lm = await window.HandLandmarker.createFromOptions(vision,{
+              baseOptions:{ modelAssetPath:modelUrl },
+              numHands:1
             });
-            await lm.setOptions({ runningMode: "video" });
+            await lm.setOptions({ runningMode:"video" });
             return lm;
-          }catch(e){ lastErr = e; }
+          }catch(e){ last=e; }
         }
-      }catch(e){ lastErr = e; }
+      }catch(e){ last=e; }
     }
-
-    throw lastErr || new Error("创建 HandLandmarker 失败");
+    throw last || new Error("创建 HandLandmarker 失败");
   }
 
   function updateFromHands(res){
     if(!res || !res.landmarks || res.landmarks.length===0){
-      targetStrength = 0;
-      targetMode = 0;
-      return;
+      targetStrength=0; targetMode=0; return;
     }
-    const L = res.landmarks[0];
-    const indexTip = L[8];
-    const thumbTip = L[4];
+    const L=res.landmarks[0];
+    const indexTip=L[8];
+    const thumbTip=L[4];
 
-    // 镜像修正：video 做了 scaleX(-1)
-    handX += ((1 - indexTip.x) - handX) * 0.35;
-    handY += (indexTip.y - handY) * 0.35;
+    handX += ((1-indexTip.x)-handX)*0.35;
+    handY += (indexTip.y-handY)*0.35;
 
-    const dx = thumbTip.x - indexTip.x;
-    const dy = thumbTip.y - indexTip.y;
-    const pinch = Math.sqrt(dx*dx + dy*dy);
+    const dx=thumbTip.x-indexTip.x;
+    const dy=thumbTip.y-indexTip.y;
+    const pinch=Math.sqrt(dx*dx+dy*dy);
 
-    if(pinch < 0.045){         // 捏合：吸引聚拢
-      targetMode = +1;
-      targetStrength = Math.min(1, Math.max(0, (0.045 - pinch) / 0.025));
-    }else if(pinch > 0.095){   // 张开：排斥扩散
-      targetMode = -1;
-      targetStrength = Math.min(1, Math.max(0, (pinch - 0.095) / 0.07));
+    if(pinch<0.045){
+      targetMode=+1;
+      targetStrength=Math.min(1,Math.max(0,(0.045-pinch)/0.025));
+    }else if(pinch>0.095){
+      targetMode=-1;
+      targetStrength=Math.min(1,Math.max(0,(pinch-0.095)/0.07));
     }else{
-      targetMode = 0;
-      targetStrength = 0.15;
+      targetMode=0;
+      targetStrength=0.15;
     }
   }
 
-  let landmarker = null;
-  let lastVideoTime = -1;
-  let running = false;
+  let landmarker=null;
+  let lastVideoTime=-1;
+  let running=false;
 
   async function start(){
-    btn.disabled = true;
-
-    // 让你“立刻看到按钮有反应”
+    btn.disabled=true;
     setStatus("已点击 ✅\n正在请求摄像头权限…");
 
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width:{ideal:1280}, height:{ideal:720} },
+      video:{ facingMode:"user", width:{ideal:1280}, height:{ideal:720} },
       audio:false
     });
-    video.srcObject = stream;
+    video.srcObject=stream;
     await video.play();
 
     await ensureMediaPipe();
     landmarker = await createHandLandmarker();
 
-    running = true;
+    running=true;
     setStatus("已启动 ✅\n食指移动；捏合=聚拢；张开=扩散");
 
-    const loop = (now)=>{
+    const loop=(now)=>{
       if(!running) return;
-      if(landmarker && video.readyState>=2 && video.currentTime !== lastVideoTime){
-        const res = landmarker.detectForVideo(video, now);
+      if(landmarker && video.readyState>=2 && video.currentTime!==lastVideoTime){
+        const res=landmarker.detectForVideo(video, now);
         updateFromHands(res);
-        lastVideoTime = video.currentTime;
+        lastVideoTime=video.currentTime;
       }
       requestAnimationFrame(loop);
     };
@@ -282,12 +248,11 @@
   }
 
   btn.addEventListener("click", async ()=>{
-    try{
-      await start();
-    }catch(e){
+    try{ await start(); }
+    catch(e){
       console.error(e);
-      setStatus("启动失败 ❌\n" + (e?.message || e) + "\n\n下一步：把这段失败文字截图发我，我告诉你该换哪个地址。");
-      btn.disabled = false;
+      setStatus("启动失败 ❌\n"+(e?.message||e)+"\n\n把这段失败文字发我，我继续给你改。");
+      btn.disabled=false;
     }
   });
 </script>
